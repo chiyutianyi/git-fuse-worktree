@@ -53,12 +53,12 @@ type memoryFile struct {
 }
 
 func (f *memoryFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
-	reader, err := f.blob.Reader()
-	if err != nil {
-		return nil, fuse.EIO
-	}
 	f.Lock()
 	if f.contents == nil {
+		reader, err := f.blob.Reader()
+		if err != nil {
+			return nil, fuse.EIO
+		}
 		contents, err := ioutil.ReadAll(reader)
 		if err != nil {
 			f.Unlock()
@@ -109,6 +109,11 @@ func (f *lazyBlobFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Statu
 		f.File = g
 	}
 	return f.File.Read(dest, off)
+}
+
+func (f *lazyBlobFile) GetAttr(out *fuse.Attr) fuse.Status {
+	*out = *f.node.attr()
+	return fuse.OK
 }
 
 func (f *lazyBlobFile) Flush() fuse.Status {
@@ -177,6 +182,44 @@ func (n *blobNode) Open(name string, flags uint32, context *fuse.Context) (file 
 	}, fuse.OK
 }
 
+func (n *blobNode) attr() *fuse.Attr {
+	return &fuse.Attr{Mode: n.mode, Size: n.size, Ino: n.Ino(), Mtime: uint64(n.time.Unix()), Atime: uint64(n.time.Unix()), Ctime: uint64(n.time.Unix())}
+}
+
 func (n *blobNode) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
-	return &fuse.Attr{Mode: n.mode, Size: n.size, Ino: n.Ino(), Mtime: uint64(n.time.Unix()), Atime: uint64(n.time.Unix()), Ctime: uint64(n.time.Unix())}, fuse.OK
+	return n.attr(), fuse.OK
+}
+
+type mockBlobNode struct {
+	gitNode
+
+	contents []byte
+}
+
+func (t *treeFS) newMockBlobNode(name string, contents []byte) (*mockBlobNode, error) {
+	return &mockBlobNode{
+		gitNode: gitNode{
+			fs:         t,
+			name:       name,
+			mode:       uint32(fuse.S_IFREG),
+			FileSystem: pathfs.NewDefaultFileSystem(),
+			time:       time.Now(),
+		},
+		contents: contents,
+	}, nil
+}
+
+func (n *mockBlobNode) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
+	return &fuse.Attr{Mode: n.mode, Size: uint64(len(n.contents)), Ino: n.Ino(), Mtime: uint64(n.time.Unix()), Atime: uint64(n.time.Unix()), Ctime: uint64(n.time.Unix())}, fuse.OK
+}
+
+func (n *mockBlobNode) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
+	if flags&fuse.O_ANYWRITE != 0 {
+		return nil, fuse.EPERM
+	}
+
+	return &memoryFile{
+		File:     nodefs.NewDefaultFile(),
+		contents: n.contents,
+	}, fuse.OK
 }

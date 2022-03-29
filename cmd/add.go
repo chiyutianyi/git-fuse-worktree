@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -18,11 +19,14 @@ import (
 
 type addCmd struct {
 	o struct {
-		debug           bool
-		logLevel        string
-		lazy            bool
-		disk            bool
-		tempDir         string
+		debug    bool
+		logLevel string
+		gitDir   string
+
+		lazy    bool
+		disk    bool
+		tempDir string
+
 		portable        bool
 		entryTtl        float64
 		negativeTtl     float64
@@ -45,20 +49,18 @@ func (cmd *addCmd) Run(_ *cobra.Command, args []string) {
 	if len(args) < 3 {
 		log.Fatalf("usage: %s MOUNT", os.Args[0])
 	}
-	mp := args[0]
-	upper := args[1]
-	gitRepo := args[2]
+
+	revision := args[1]
+
+	mp := fmt.Sprintf("%s/%s", cmd.o.gitDir, args[0])
+	upper := fmt.Sprintf("%s/%s-upper", cmd.o.gitDir, args[0])
+	worktree := fmt.Sprintf("%s/worktrees/%s", cmd.o.gitDir, args[0])
 
 	doCheckAndUnmount(mp)
 
 	tempDir, err := ioutil.TempDir("", cmd.o.tempDir)
 	if err != nil {
 		log.Fatalf("TempDir: %v", err)
-	}
-
-	components := strings.Split(gitRepo, ":")
-	if len(components) != 2 {
-		log.Fatalf("must have 2 components: %q", gitRepo)
 	}
 
 	opts := &fs.GitFSOptions{
@@ -76,7 +78,7 @@ func (cmd *addCmd) Run(_ *cobra.Command, args []string) {
 	fses := make([]pathfs.FileSystem, 0)
 	fses = append(fses, pathfs.NewLoopbackFileSystem(upper))
 
-	root, err := fs.NewTreeFSRoot(components[0], components[1], opts)
+	root, err := fs.NewTreeFSRoot(cmd.o.gitDir, revision, worktree, opts)
 	if err != nil {
 		log.Fatalf("NewTreeFSRoot: %v", err)
 	}
@@ -121,6 +123,7 @@ func init() {
 	flags := cmd.Flags()
 	flags.BoolVarP(&add.o.debug, "debug", "d", false, "debug")
 	flags.StringVarP(&add.o.logLevel, "log-level", "", "info", "log level")
+	flags.StringVarP(&add.o.gitDir, "git-dir", "", "", "git dir")
 
 	flags.BoolVarP(&add.o.lazy, "lazy", "", true, "only read contents for reads")
 	flags.BoolVarP(&add.o.disk, "disk", "", false, "don't use intermediate files")

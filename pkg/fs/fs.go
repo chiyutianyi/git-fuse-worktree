@@ -23,15 +23,15 @@ type treeFS struct {
 	automaticIno uint64
 }
 
-func NewTreeFSRoot(path, revision string, opts *GitFSOptions) (pathfs.FileSystem, error) {
-	repository, err := gogit.PlainOpen(path)
+func NewTreeFSRoot(gitdir, revision, worktree string, opts *GitFSOptions) (pathfs.FileSystem, error) {
+	repository, err := gogit.PlainOpen(gitdir)
 	if err != nil {
 		return nil, err
 	}
 	t := treeFS{
 		repository:   repository,
 		opts:         opts,
-		automaticIno: 0,
+		automaticIno: 1,
 	}
 	oid, err := repository.ResolveRevision(plumbing.Revision(revision))
 	if err != nil {
@@ -45,7 +45,7 @@ func NewTreeFSRoot(path, revision string, opts *GitFSOptions) (pathfs.FileSystem
 	if err != nil {
 		return nil, fmt.Errorf("root tree: %v", err)
 	}
-	return t.newDirNode("", root.Hash), nil
+	return t.newDirNode(gitdir, worktree, "", root.Hash), nil
 }
 
 func (t *treeFS) onMount(nodeFs *pathfs.PathNodeFs) {

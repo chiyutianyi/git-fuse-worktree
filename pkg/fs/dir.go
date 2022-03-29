@@ -2,6 +2,7 @@ package fs
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,18 +23,56 @@ type dirNode struct {
 	tree        *object.Tree
 	children    []gitEntry
 	childrenMap map[string]gitEntry
+
+	parents []fuse.DirEntry
 }
 
-func (t *treeFS) newDirNode(name string, oid plumbing.Hash) *dirNode {
+func (t *treeFS) newDirNode(gitdir, worktree, name string, oid plumbing.Hash) *dirNode {
+	var (
+		parents     []fuse.DirEntry
+		ino         uint64
+		mode        uint32 = fuse.S_IFDIR | 0755
+		children    []gitEntry
+		childrenMap = map[string]gitEntry{}
+	)
+	if gitdir != "" {
+		st := syscall.Stat_t{}
+		err := syscall.Lstat(gitdir, &st)
+		if err != nil {
+			log.Errorf("get root %s stat: %s", gitdir, err)
+		} else {
+			ino = st.Ino
+			mode = uint32(st.Mode)
+			parents = append(parents, fuse.DirEntry{mode, ".", ino})
+			dir := filepath.Dir(gitdir)
+			err = syscall.Lstat(dir, &st)
+			if err != nil {
+				log.Errorf("get root %s stat: %s", dir, err)
+			} else {
+				parents = append(parents, fuse.DirEntry{uint32(st.Mode), "..", st.Ino})
+			}
+		}
+		gitRoot, err := t.newMockBlobNode(".git", []byte(fmt.Sprintf("gitdir: %s", worktree)))
+		if err != nil {
+			log.Errorf("newMockBlobNode .git: %s", err)
+		} else {
+			children = append(children, gitRoot)
+			childrenMap[".git"] = gitRoot
+		}
+	}
 	return &dirNode{
 		gitNode: gitNode{
 			FileSystem: pathfs.NewDefaultFileSystem(),
 			fs:         t,
+			inode:      ino,
 			name:       name,
 			oid:        oid,
-			mode:       fuse.S_IFDIR | 0755,
+			mode:       mode,
 			time:       time.Now(),
 		},
+		parents:     parents,
+		children:    children,
+		childrenMap: childrenMap,
 	}
 }
 
@@ -52,11 +91,10 @@ func (n *dirNode) getChildren() fuse.Status {
 		}
 		n.tree = tree
 		var chNode gitEntry
-		n.childrenMap = make(map[string]gitEntry, len(n.tree.Entries))
 		for _, entry := range n.tree.Entries {
 			isdir := entry.Mode&syscall.S_IFDIR != 0
 			if isdir {
-				chNode = n.fs.newDirNode(entry.Name, entry.Hash)
+				chNode = n.fs.newDirNode("", "", entry.Name, entry.Hash)
 			} else if entry.Mode&^07777 == syscall.S_IFLNK {
 				chNode = n.fs.newLinkNode(entry.Name, entry.Hash)
 			} else if entry.Mode&^07777 == syscall.S_IFREG {
@@ -86,6 +124,7 @@ func (n *dirNode) OpenDir(name string, context *fuse.Context) (stream []fuse.Dir
 	}
 
 	if name == "" {
+		stream = append(stream, n.parents...)
 		for _, ch := range n.children {
 			stream = append(stream, fuse.DirEntry{ch.Mode(), ch.Name(), ch.Ino()})
 		}
@@ -152,6 +191,9 @@ func (n *dirNode) Open(name string, flags uint32, context *fuse.Context) (file n
 		return nil, fuse.ENOENT
 	}
 	if len(rs) == 1 {
+		if len(n.parents) > 0 && name == ".git" {
+			return child.(*mockBlobNode).Open(name, flags, context)
+		}
 		return child.(*blobNode).Open(name, flags, context)
 	}
 	return child.(*dirNode).Open(rs[1], flags, context)

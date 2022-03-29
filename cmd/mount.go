@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -19,11 +20,15 @@ import (
 
 type gitfsCmd struct {
 	o struct {
-		debug           bool
-		logLevel        string
-		lazy            bool
-		disk            bool
-		tempDir         string
+		debug    bool
+		logLevel string
+
+		gitDir string
+
+		lazy    bool
+		disk    bool
+		tempDir string
+
 		portable        bool
 		entryTtl        float64
 		negativeTtl     float64
@@ -46,8 +51,11 @@ func (cmd *gitfsCmd) Run(_ *cobra.Command, args []string) {
 	if len(args) < 2 {
 		log.Fatalf("usage: %s MOUNT", os.Args[0])
 	}
-	mp := args[0]
-	gitRepo := args[1]
+
+	revision := args[1]
+
+	mp := fmt.Sprintf("%s/%s", cmd.o.gitDir, args[0])
+	worktree := fmt.Sprintf("%s/worktrees/%s", cmd.o.gitDir, args[0])
 
 	doCheckAndUnmount(mp)
 
@@ -56,18 +64,13 @@ func (cmd *gitfsCmd) Run(_ *cobra.Command, args []string) {
 		log.Fatalf("TempDir: %v", err)
 	}
 
-	components := strings.Split(gitRepo, ":")
-	if len(components) != 2 {
-		log.Fatalf("must have 2 components: %q", gitRepo)
-	}
-
 	opts := &fs.GitFSOptions{
 		Lazy:    cmd.o.lazy,
 		Disk:    cmd.o.disk,
 		TempDir: tempDir,
 	}
 
-	root, err := fs.NewTreeFSRoot(components[0], components[1], opts)
+	root, err := fs.NewTreeFSRoot(cmd.o.gitDir, revision, worktree, opts)
 	if err != nil {
 		log.Fatalf("NewTreeFSRoot: %v", err)
 	}
@@ -121,6 +124,7 @@ func init() {
 	flags := cmd.Flags()
 	flags.BoolVarP(&gitfs.o.debug, "debug", "d", false, "debug")
 	flags.StringVarP(&gitfs.o.logLevel, "log-level", "", "info", "log level")
+	flags.StringVarP(&gitfs.o.gitDir, "git-dir", "", "", "git dir")
 
 	flags.BoolVarP(&gitfs.o.lazy, "lazy", "", true, "only read contents for reads")
 	flags.BoolVarP(&gitfs.o.disk, "disk", "", false, "don't use intermediate files")
