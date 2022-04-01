@@ -33,6 +33,7 @@ func NewTreeFSRoot(gitdir, revision, worktree string, opts *GitFSOptions) (pathf
 		opts:         opts,
 		automaticIno: 1,
 	}
+
 	oid, err := repository.ResolveRevision(plumbing.Revision(revision))
 	if err != nil {
 		return nil, fmt.Errorf("resolve revision: %v", err)

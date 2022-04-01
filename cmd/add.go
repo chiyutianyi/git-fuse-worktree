@@ -46,15 +46,17 @@ func (cmd *addCmd) getLogLevel() (logLevel log.Level) {
 
 func (cmd *addCmd) Run(_ *cobra.Command, args []string) {
 	log.SetLevel(cmd.getLogLevel())
-	if len(args) < 3 {
-		log.Fatalf("usage: %s MOUNT", os.Args[0])
+	if len(args) < 2 {
+		log.Fatalf("usage: %s add <worktree> <revision>", os.Args[0])
 	}
 
 	revision := args[1]
 
-	mp := fmt.Sprintf("%s/%s", cmd.o.gitDir, args[0])
-	upper := fmt.Sprintf("%s/%s-upper", cmd.o.gitDir, args[0])
-	worktree := fmt.Sprintf("%s/worktrees/%s", cmd.o.gitDir, args[0])
+	gitDir := getGitDir(cmd.o.gitDir)
+
+	mp := getMountpoint(gitDir, args[0])
+	upper := fmt.Sprintf("%s/%s-upper", gitDir, args[0])
+	worktree := getWorktree(gitDir, args[0])
 
 	doCheckAndUnmount(mp)
 
@@ -123,7 +125,7 @@ func init() {
 	flags := cmd.Flags()
 	flags.BoolVarP(&add.o.debug, "debug", "d", false, "debug")
 	flags.StringVarP(&add.o.logLevel, "log-level", "", "info", "log level")
-	flags.StringVarP(&add.o.gitDir, "git-dir", "", "", "git dir")
+	bindGitDir(flags, &add.o.gitDir)
 
 	flags.BoolVarP(&add.o.lazy, "lazy", "", true, "only read contents for reads")
 	flags.BoolVarP(&add.o.disk, "disk", "", false, "don't use intermediate files")
