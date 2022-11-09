@@ -58,3 +58,14 @@ func (n *gitNode) Ino() uint64 {
 func (n *gitNode) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	return fuse.OK
 }
+
+func (n *gitNode) GetXAttr(name string, attribute string, context *fuse.Context) (data []byte, code fuse.Status) {
+	if attribute == "unix_digest_hash_attribute_name" {
+		return []byte(n.oid.String()), fuse.OK
+	}
+	return nil, fuse.ENODATA
+}
+
+func (n *gitNode) ListXAttr(name string, context *fuse.Context) (attributes []string, code fuse.Status) {
+	return []string{"unix_digest_hash_attribute_name"}, fuse.OK
+}
