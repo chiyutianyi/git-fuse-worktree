@@ -28,6 +28,19 @@ type blobNode struct {
 func (t *treeFS) newBlobNode(name string, oid plumbing.Hash, mode filemode.FileMode) (*blobNode, error) {
 	blob, err := t.repository.BlobObject(oid)
 	if err != nil {
+		if err == plumbing.ErrObjectNotFound {
+			// TODO fetch from remote
+			return &blobNode{
+				gitNode: gitNode{
+					fs:         t,
+					name:       name,
+					oid:        oid,
+					mode:       uint32(mode),
+					FileSystem: pathfs.NewDefaultFileSystem(),
+					time:       time.Now(),
+				},
+			}, nil
+		}
 		return nil, err
 	}
 

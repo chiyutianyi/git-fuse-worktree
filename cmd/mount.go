@@ -54,7 +54,7 @@ func (cmd *gitfsCmd) Run(_ *cobra.Command, args []string) {
 
 	revision := args[1]
 
-	mp := fmt.Sprintf("%s/%s", cmd.o.gitDir, args[0])
+	mp := args[0]
 	worktree := fmt.Sprintf("%s/worktrees/%s", cmd.o.gitDir, args[0])
 
 	doCheckAndUnmount(mp)
